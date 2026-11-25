@@ -1,15 +1,22 @@
 package com.scamhonemtdo.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.speech.tts.TextToSpeech;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -25,16 +32,25 @@ public class MainActivity extends Activity {
 
     private EditText inputBox;
     private TextView resultBox;
+    private Button openBrowserBtn;
     private TextToSpeech tts;
     private GmsBarcodeScanner scanner;
+    private String lastSafeUrl = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+            }
+        }
+
         tts = new TextToSpeech(this, status -> {
             if (status == TextToSpeech.SUCCESS) {
                 tts.setLanguage(new Locale("hi", "IN"));
+                handleIncomingIntent(getIntent());
             }
         });
 
@@ -49,24 +65,54 @@ public class MainActivity extends Activity {
 
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(45, 55, 45, 55);
+        layout.setPadding(45, 50, 45, 50);
         layout.setGravity(Gravity.CENTER_HORIZONTAL);
 
         TextView title = new TextView(this);
-        title.setText("🛡️ ScamHoneMtDo");
-        title.setTextSize(26);
+        title.setText("🛡️ ScamHoneMtDo v3.0");
+        title.setTextSize(25);
         title.setTypeface(null, Typeface.BOLD);
         title.setTextColor(Color.parseColor("#1A237E"));
         title.setGravity(Gravity.CENTER);
         layout.addView(title);
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("लिंक, UPI/QR कोड या APK फाइल की तुरंत जांच करें");
+        subtitle.setText("ऑटो-लिंक और मैसेज सुरक्षा कवच");
         subtitle.setTextSize(13);
         subtitle.setTextColor(Color.parseColor("#546E7A"));
-        subtitle.setPadding(0, 8, 0, 35);
+        subtitle.setPadding(0, 6, 0, 28);
         subtitle.setGravity(Gravity.CENTER);
         layout.addView(subtitle);
+
+        // Auto Protection Setup Buttons
+        LinearLayout shieldRow = new LinearLayout(this);
+        shieldRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams shieldRowParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        shieldRowParams.setMargins(0, 0, 0, 22);
+        shieldRow.setLayoutParams(shieldRowParams);
+
+        Button notifPermBtn = new Button(this);
+        notifPermBtn.setText("🔔 ऑटो-मैसेज अलर्ट");
+        notifPermBtn.setTextSize(12);
+        notifPermBtn.setBackgroundColor(Color.parseColor("#2E7D32"));
+        notifPermBtn.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        p1.setMargins(0, 0, 8, 0);
+        notifPermBtn.setLayoutParams(p1);
+
+        Button linkGuardBtn = new Button(this);
+        linkGuardBtn.setText("🔗 लिंक सुरक्षा सेट करें");
+        linkGuardBtn.setTextSize(12);
+        linkGuardBtn.setBackgroundColor(Color.parseColor("#EF6C00"));
+        linkGuardBtn.setTextColor(Color.WHITE);
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+        p2.setMargins(8, 0, 0, 0);
+        linkGuardBtn.setLayoutParams(p2);
+
+        shieldRow.addView(notifPermBtn);
+        shieldRow.addView(linkGuardBtn);
+        layout.addView(shieldRow);
 
         Button qrBtn = new Button(this);
         qrBtn.setText("📷 QR कोड स्कैन करें (SCAN QR)");
@@ -74,15 +120,15 @@ public class MainActivity extends Activity {
         qrBtn.setTypeface(null, Typeface.BOLD);
         qrBtn.setTextColor(Color.WHITE);
         qrBtn.setBackgroundColor(Color.parseColor("#1565C0"));
-        qrBtn.setPadding(20, 32, 20, 32);
+        qrBtn.setPadding(20, 30, 20, 30);
         LinearLayout.LayoutParams qrParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        qrParams.setMargins(0, 0, 0, 25);
+        qrParams.setMargins(0, 0, 0, 22);
         qrBtn.setLayoutParams(qrParams);
         layout.addView(qrBtn);
 
         inputBox = new EditText(this);
-        inputBox.setHint("उदाहरण: shadi-card.apk या http://sbi-kyc.xyz या upi://pay...");
+        inputBox.setHint("उदाहरण: shadi-card.apk या http://sbi-kyc.xyz...");
         inputBox.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE);
         inputBox.setMinLines(3);
         inputBox.setGravity(Gravity.TOP | Gravity.START);
@@ -96,7 +142,7 @@ public class MainActivity extends Activity {
         actionRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        rowParams.setMargins(0, 18, 0, 22);
+        rowParams.setMargins(0, 16, 0, 20);
         actionRow.setLayoutParams(rowParams);
 
         Button pasteBtn = new Button(this);
@@ -127,10 +173,10 @@ public class MainActivity extends Activity {
         scanBtn.setTypeface(null, Typeface.BOLD);
         scanBtn.setTextColor(Color.WHITE);
         scanBtn.setBackgroundColor(Color.parseColor("#D32F2F"));
-        scanBtn.setPadding(20, 35, 20, 35);
+        scanBtn.setPadding(20, 32, 20, 32);
         LinearLayout.LayoutParams btnParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        btnParams.setMargins(0, 0, 0, 30);
+        btnParams.setMargins(0, 0, 0, 25);
         scanBtn.setLayoutParams(btnParams);
         layout.addView(scanBtn);
 
@@ -142,8 +188,45 @@ public class MainActivity extends Activity {
         resultBox.setTextColor(Color.parseColor("#333333"));
         layout.addView(resultBox);
 
+        openBrowserBtn = new Button(this);
+        openBrowserBtn.setText("🌐 सुरक्षित है — Chrome/ब्राउज़र में खोलें");
+        openBrowserBtn.setTextSize(14);
+        openBrowserBtn.setTypeface(null, Typeface.BOLD);
+        openBrowserBtn.setTextColor(Color.WHITE);
+        openBrowserBtn.setBackgroundColor(Color.parseColor("#00796B"));
+        openBrowserBtn.setPadding(20, 28, 20, 28);
+        openBrowserBtn.setVisibility(View.GONE);
+        LinearLayout.LayoutParams obParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        obParams.setMargins(0, 20, 0, 0);
+        openBrowserBtn.setLayoutParams(obParams);
+        layout.addView(openBrowserBtn);
+
         scroll.addView(layout);
         setContentView(scroll);
+
+        notifPermBtn.setOnClickListener(v -> {
+            startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS));
+        });
+
+        linkGuardBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+            startActivity(intent);
+        });
+
+        openBrowserBtn.setOnClickListener(v -> {
+            if (!lastSafeUrl.isEmpty()) {
+                Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse(lastSafeUrl));
+                browserIntent.setPackage("com.android.chrome");
+                try {
+                    startActivity(browserIntent);
+                } catch (Exception e) {
+                    Intent fallback = Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_BROWSER);
+                    fallback.setData(Uri.parse(lastSafeUrl));
+                    startActivity(fallback);
+                }
+            }
+        });
 
         pasteBtn.setOnClickListener(v -> {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -158,6 +241,7 @@ public class MainActivity extends Activity {
 
         clearBtn.setOnClickListener(v -> {
             inputBox.setText("");
+            openBrowserBtn.setVisibility(View.GONE);
             resultBox.setText("नतीजा यहाँ दिखेगा...");
             resultBox.setBackgroundColor(Color.WHITE);
             resultBox.setTextColor(Color.parseColor("#333333"));
@@ -182,8 +266,29 @@ public class MainActivity extends Activity {
         scanBtn.setOnClickListener(v -> analyzeText(inputBox.getText().toString()));
     }
 
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingIntent(intent);
+    }
+
+    private void handleIncomingIntent(Intent intent) {
+        if (intent != null && Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            String url = intent.getData().toString();
+            if (inputBox != null) {
+                inputBox.setText(url);
+                analyzeText(url);
+            }
+        }
+    }
+
     private void analyzeText(String raw) {
-        String text = raw.trim().toLowerCase();
+        String trimmed = raw.trim();
+        String text = trimmed.toLowerCase();
+        openBrowserBtn.setVisibility(View.GONE);
+        lastSafeUrl = "";
+
         if (text.isEmpty()) {
             resultBox.setBackgroundColor(Color.parseColor("#FFEBEE"));
             resultBox.setTextColor(Color.parseColor("#B71C1C"));
@@ -208,6 +313,11 @@ public class MainActivity extends Activity {
             resultBox.setTextColor(Color.parseColor("#1B5E20"));
             resultBox.setText("✅ कोई बड़ा खतरा नहीं मिला।\n\nफिर भी अनजान व्यक्ति के साथ कभी भी OTP या UPI PIN साझा न करें।");
             speak("कोई बड़ा खतरा नहीं मिला, फिर भी सावधान रहें।");
+
+            if (text.startsWith("https://")) {
+                lastSafeUrl = trimmed;
+                openBrowserBtn.setVisibility(View.VISIBLE);
+            }
         }
     }
 
